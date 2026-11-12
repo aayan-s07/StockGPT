@@ -5,9 +5,14 @@
 - Downloads available daily price history.
 - Calculates RSI, SMA, EMA, MACD, Bollinger Bands, ATR, volume averages and volatility.
 - Displays available provider fundamentals and financial statements.
+- Adds a BUY/SELL/HOLD/N/A signal and a short explanation beside each fundamental metric and selected technical indicator.
+- Shows an overall rule-based signal gauge using technical indicators and, when enough data is available, core fundamentals. The score is not a probability of profit.
 - Retrieves available Yahoo Finance news and performs a public web search.
 - Produces transparent historical-volatility scenario ranges for several horizons.
 - Exports price history and fundamentals as CSV files.
+
+## Signal methodology and limitations
+The signal labels use broad, transparent thresholds for moving averages, RSI, MACD, Bollinger Bands, selected valuation ratios, profitability and leverage. They are not sector-adjusted, do not account for every company-specific event, and should not be treated as personal financial advice or direct trade instructions. The overall gauge is a heuristic score, not a probability or validated predictive model.
 
 ## Important limitations
 This is a prototype, not a professional-grade investment model. Free public data is incomplete, may be delayed, and can fail. Web search is not exhaustive. Scenario ranges are not reliable probabilities or guaranteed forecasts. Always verify company facts and announcements against official NSE/BSE filings and company investor-relations material. No automatic trading or broker connection is included.
