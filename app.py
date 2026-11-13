@@ -11,15 +11,25 @@ from ddgs import DDGS
 
 warnings.filterwarnings("ignore")
 
-st.set_page_config(page_title="India Stock Intelligence", page_icon="📈", layout="wide")
+st.set_page_config(page_title="StockGPT • Market Playground", page_icon="🌍", layout="wide")
+st.markdown("""
+<style>
+.stApp {background: linear-gradient(180deg,#f7f8ff 0%,#ffffff 42%);}
+.block-container {padding-top:1.5rem; max-width:1450px;}
+.hero {padding:1.4rem 1.6rem;border-radius:22px;background:linear-gradient(120deg,#3425a8,#5b4be7 55%,#00a6a6);color:white;margin-bottom:1rem;}
+.hero h1 {color:white;margin:0;font-size:2.3rem;} .hero p {color:#e9e7ff;margin:.35rem 0 0 0;}
+div[data-testid="stMetric"] {background:white;border:1px solid #e7e8f3;padding:14px;border-radius:16px;box-shadow:0 4px 14px #2020500a;}
+div[data-testid="stTabs"] button {border-radius:12px 12px 0 0;}
+</style>
+<div class="hero"><h1>🌍 StockGPT</h1><p>Your global-market research playground — built for Indian investors 🇮🇳</p></div>
+""", unsafe_allow_html=True)
+st.caption("Global ticker lookup • INR/USD conversions • transparent research signals • intraday scenario estimates")
 
-st.title("📈 India Stock Intelligence")
-st.caption("Research assistant for NSE/BSE-listed shares • educational research, not a guaranteed prediction or personalised financial advice")
 
 st.warning(
     "Markets are uncertain. This app cannot guarantee profits or detect every price-moving event. "
-    "Data may be delayed, incomplete, adjusted, or unavailable. Verify important facts against NSE/BSE filings "
-    "and company reports before making any decision."
+    "Free-provider quotes may be delayed, rate-limited or incomplete; intraday estimates are scenarios, not reliable promises. "
+    "Verify important facts against official exchange filings before making decisions."
 )
 
 PERIODS = {
@@ -57,20 +67,23 @@ def search_tickers(query):
             symbol = item.get("symbol")
             name = item.get("shortname") or item.get("longname") or symbol
             exchange = item.get("exchange") or item.get("exchDisp") or ""
-            if symbol and (symbol.endswith(".NS") or symbol.endswith(".BO") or exchange in ("NSI", "BSE", "NSE")):
-                candidates.append({"label": f"{name} — {symbol} ({exchange})", "symbol": symbol, "name": name})
+            if symbol:
+                currency = item.get("currency") or ""
+                candidates.append({"label": f"{name} — {symbol} ({exchange or 'listing'}; {currency or 'currency unknown'})", "symbol": symbol, "name": name})
         # Ensure direct ticker input is also possible.
-        q = query.strip().upper().replace(" ", "")
-        if q.endswith(".NS") or q.endswith(".BO"):
-            candidates.insert(0, {"label": f"Use entered ticker — {q}", "symbol": q, "name": q})
+        raw = query.strip()
+        q = raw.upper().replace(" ", "")
+        if raw and " " not in raw and ("." in raw or raw.isupper()):
+            candidates.insert(0, {"label": f"Try entered ticker — {q}", "symbol": q, "name": q})
         seen, unique = set(), []
         for c in candidates:
             if c["symbol"] not in seen:
                 unique.append(c); seen.add(c["symbol"])
         return unique
     except Exception:
-        q = query.strip().upper().replace(" ", "")
-        if q.endswith(".NS") or q.endswith(".BO"):
+        raw = query.strip()
+        q = raw.upper().replace(" ", "")
+        if q and " " not in raw:
             return [{"label": q, "symbol": q, "name": q}]
         return []
 
@@ -148,26 +161,27 @@ def get_fundamentals(ticker):
         if ocf_value is not None and capex_value is not None:
             fcf = ocf_value + capex_value  # Yahoo commonly records capex as a negative value.
 
+    quote_currency = str(info.get("currency") or ("INR" if ticker.endswith((".NS", ".BO")) else "provider currency"))
     rows = [
-        ("Current/last price", info.get("currentPrice") or info.get("regularMarketPrice"), "₹", "Latest provider quote; may be delayed."),
-        ("Market capitalisation", info.get("marketCap"), "₹", "Market value of listed equity; provider currency/coverage may vary."),
+        ("Current/last price", info.get("currentPrice") or info.get("regularMarketPrice"), quote_currency, "Latest provider quote; may be delayed."),
+        ("Market capitalisation", info.get("marketCap"), quote_currency, "Market value of listed equity; provider currency/coverage may vary."),
         ("P/E (trailing)", info.get("trailingPE"), "x", "Price divided by trailing 12-month earnings per share. Compare within the same industry."),
         ("P/E (forward)", info.get("forwardPE"), "x", "Price divided by estimated future EPS; estimates can be wrong."),
         ("Price/book", info.get("priceToBook"), "x", "Price relative to accounting book value; especially useful for financial firms."),
         ("Price/sales", info.get("priceToSalesTrailing12Months"), "x", "Market value relative to revenue; ignores profitability."),
         ("EV/EBITDA", info.get("enterpriseToEbitda"), "x", "Enterprise value relative to operating earnings before selected costs."),
-        ("EPS (trailing)", info.get("trailingEps"), "₹", "Trailing earnings per share."),
-        ("EPS (forward)", info.get("forwardEps"), "₹", "Forecast earnings per share, if available."),
+        ("EPS (trailing)", info.get("trailingEps"), quote_currency, "Trailing earnings per share."),
+        ("EPS (forward)", info.get("forwardEps"), quote_currency, "Forecast earnings per share, if available."),
         ("Dividend yield", info.get("dividendYield"), "%", "Cash dividend yield; not guaranteed and price changes affect it."),
         ("ROE", info.get("returnOnEquity"), "%", "Profit relative to equity; high leverage can inflate it."),
         ("Profit margin", info.get("profitMargins"), "%", "Net income divided by revenue."),
         ("Operating margin", info.get("operatingMargins"), "%", "Operating profit relative to revenue."),
         ("Debt/equity (provider)", info.get("debtToEquity"), "provider ratio", "Definitions and units can differ; verify against statements."),
         ("Beta", info.get("beta"), "x", "Historical sensitivity to a benchmark, not a forecast."),
-        ("Analyst target (provider)", info.get("targetMeanPrice"), "₹", "If supplied; not a promise or independently verified fair value."),
-        ("Revenue (latest annual, provider statements)", safe_num(revenue.iloc[0]) if revenue is not None else None, "₹", "Latest available annual statement value."),
-        ("Net income (latest annual, provider statements)", safe_num(net_income.iloc[0]) if net_income is not None else None, "₹", "Latest available annual statement value."),
-        ("Free cash flow (rough, latest annual)", fcf, "₹", "Operating cash flow plus capex when capex is recorded as a negative number."),
+        ("Analyst target (provider)", info.get("targetMeanPrice"), quote_currency, "If supplied; not a promise or independently verified fair value."),
+        ("Revenue (latest annual, provider statements)", safe_num(revenue.iloc[0]) if revenue is not None else None, quote_currency, "Latest available annual statement value."),
+        ("Net income (latest annual, provider statements)", safe_num(net_income.iloc[0]) if net_income is not None else None, quote_currency, "Latest available annual statement value."),
+        ("Free cash flow (rough, latest annual)", fcf, quote_currency, "Operating cash flow plus capex when capex is recorded as a negative number."),
     ]
     return t, info, pd.DataFrame(rows, columns=["Metric", "Value", "Unit", "Meaning"])
 
@@ -460,12 +474,94 @@ def build_overall_signal(technical_signals, fundamental_signals):
         "method": method,
     }
 
-query = st.text_input("Enter a company name or Yahoo Finance ticker", value="Sagility")
+def get_fx_rate(from_currency, to_currency):
+    """Approximate FX conversion from Yahoo Finance daily history; provider quotes may be delayed."""
+    if not from_currency or not to_currency:
+        return None
+    if from_currency.upper() == to_currency.upper():
+        return 1.0
+    pair = f"{from_currency.upper()}{to_currency.upper()}=X"
+    try:
+        fx = yf.Ticker(pair).history(period="5d", interval="1d")
+        if not fx.empty:
+            return safe_num(fx["Close"].dropna().iloc[-1])
+    except Exception:
+        pass
+    return None
+
+def intraday_scenarios(ticker):
+    """Short-horizon volatility scenarios using available 1-minute candles; not validated predictions."""
+    try:
+        intraday = yf.Ticker(ticker).history(period="7d", interval="1m", auto_adjust=True)
+    except Exception:
+        intraday = pd.DataFrame()
+    if intraday.empty or "Close" not in intraday or intraday["Close"].dropna().shape[0] < 30:
+        return pd.DataFrame(), "Intraday candles unavailable or insufficient. The provider may not support 1-minute data for this listing."
+    close = intraday["Close"].dropna()
+    returns = np.log(close / close.shift(1)).dropna()
+    if len(returns) < 20:
+        return pd.DataFrame(), "Not enough intraday observations for even a rough volatility scenario."
+    # Exclude overnight gaps by using observed candle volatility. Drift is heavily shrunk toward zero.
+    recent = returns.tail(120)
+    drift_per_min = float(np.clip(recent.mean() * 0.15, -0.00015, 0.00015))
+    vol_per_min = float(recent.std())
+    price_now = float(close.iloc[-1])
+    horizons = [("1 minute", 1), ("1 hour", 60), ("3 hours", 180), ("6 hours", 360)]
+    rows=[]
+    for label, minutes in horizons:
+        mu=drift_per_min*minutes
+        sigma=vol_per_min*math.sqrt(minutes)
+        midpoint=price_now*math.exp(mu)
+        lo=price_now*math.exp(mu-1.0*sigma)
+        hi=price_now*math.exp(mu+1.0*sigma)
+        rows.append({"Horizon":label,"Minutes":minutes,"Scenario midpoint":midpoint,
+                     "Illustrative range low":lo,"Illustrative range high":hi,
+                     "Midpoint change %":(midpoint/price_now-1)*100,
+                     "Recent candle volatility %":vol_per_min*100})
+    return pd.DataFrame(rows), None
+
+NSE_UNIVERSE = [
+    ("RELIANCE.NS","Reliance Industries"),("TCS.NS","Tata Consultancy Services"),
+    ("HDFCBANK.NS","HDFC Bank"),("ICICIBANK.NS","ICICI Bank"),("INFY.NS","Infosys"),
+    ("ITC.NS","ITC"),("BHARTIARTL.NS","Bharti Airtel"),("SBIN.NS","State Bank of India"),
+    ("LT.NS","Larsen & Toubro"),("HINDUNILVR.NS","Hindustan Unilever"),
+    ("TATAMOTORS.NS","Tata Motors"),("SUNPHARMA.NS","Sun Pharma"),
+    ("KOTAKBANK.NS","Kotak Mahindra Bank"),("AXISBANK.NS","Axis Bank"),("MARUTI.NS","Maruti Suzuki"),
+    ("TRENT.NS","Trent"),("BEL.NS","Bharat Electronics"),("ZOMATO.NS","Eternal (formerly Zomato)"),
+    ("TATAPOWER.NS","Tata Power"),("ONGC.NS","ONGC")
+]
+
+def quick_nse_watchlist():
+    """Scan a small liquid NSE watchlist, not the entire market; rank by simple daily technical score."""
+    rows=[]
+    for ticker,name in NSE_UNIVERSE:
+        try:
+            h=yf.Ticker(ticker).history(period="9mo", interval="1d", auto_adjust=True)
+            if h.empty or len(h)<55: continue
+            close=h["Close"].dropna()
+            sma20=close.rolling(20).mean().iloc[-1]
+            sma50=close.rolling(50).mean().iloc[-1]
+            ret5=close.pct_change(5).iloc[-1]
+            vol20=close.pct_change().tail(20).std()
+            score=(1 if close.iloc[-1]>sma20 else -1)+(1 if close.iloc[-1]>sma50 else -1)+(1 if sma20>sma50 else -1)+(1 if ret5>0 else -1)
+            signal="BUY setup" if score>=2 else "SELL / weak" if score<=-2 else "Mixed / watch"
+            rows.append({"NSE stock":name,"Ticker":ticker,"Last close (₹)":float(close.iloc[-1]),
+                         "5-session move %":float(ret5*100),"20-session volatility %":float(vol20*100),
+                         "Rule-based setup":signal,"Trend score":score})
+        except Exception:
+            continue
+    if not rows: return pd.DataFrame()
+    return pd.DataFrame(rows).sort_values(["Trend score","5-session move %"],ascending=False)
+
+with st.expander("🔎 Find a stock anywhere in the world", expanded=True):
+    query = st.text_input("Company name or ticker", value="Reliance Industries", placeholder="e.g. Reliance Industries, Apple, MSFT, TCS.NS, 7203.T")
+    st.caption("Examples: Indian NSE ticker TCS.NS • US ticker AAPL • UK ticker SHEL.L • Japan ticker 7203.T. Search results depend on provider coverage.")
+
 if st.button("Research stock", type="primary"):
     with st.spinner("Finding ticker candidates…"):
         candidates = search_tickers(query)
     if not candidates:
-        st.error("No NSE/BSE ticker candidates found. Try a more specific company name or enter a ticker such as TCS.NS or 500570.BO.")
+        st.error("No ticker candidates found. Try the exact company name or provider ticker, such as AAPL, MSFT, TCS.NS, or 7203.T.")
         st.stop()
     st.session_state["candidates"] = candidates
     st.session_state["query"] = query
@@ -492,6 +588,9 @@ if "candidates" in st.session_state:
 
         latest = df.iloc[-1]
         price = float(latest["Close"])
+        currency = str(info.get("currency") or ("INR" if ticker.endswith((".NS", ".BO")) else "USD"))
+        fx_inr = get_fx_rate(currency, "INR")
+        fx_usd = get_fx_rate(currency, "USD")
         prev = df["Close"].iloc[-2] if len(df) > 1 else price
         change = price / prev - 1 if prev else 0
         technical_signals = build_technical_signals(df)
@@ -499,7 +598,11 @@ if "candidates" in st.session_state:
         overall = build_overall_signal(technical_signals, fundamental_signals)
         st.subheader(f"{chosen.get('name', query)} ({ticker})")
         a, b, c, d = st.columns(4)
-        a.metric("Latest available close", f"₹{price:,.2f}", f"{change*100:+.2f}% vs previous close")
+        a.metric(f"Latest available close ({currency})", f"{currency} {price:,.2f}", f"{change*100:+.2f}% vs previous close")
+        if fx_inr is not None:
+            st.caption(f"Approx. converted price: ₹{price*fx_inr:,.2f} INR")
+        if fx_usd is not None:
+            st.caption(f"Approx. converted price: ${price*fx_usd:,.2f} USD")
         b.metric("RSI (14)", fmt_num(latest.get("RSI14"), 1))
         b.caption("Momentum indicator, not a standalone buy/sell signal.")
         c.metric("20-session volatility", fmt_pct(df["DailyReturn"].tail(20).std() * np.sqrt(252)))
@@ -537,16 +640,33 @@ if "candidates" in st.session_state:
             gauge.update_layout(height=250, margin={"l": 25, "r": 25, "t": 55, "b": 10})
             st.plotly_chart(gauge, use_container_width=True)
         st.warning("Signals use broad, fixed rules. Valuation thresholds are not sector-adjusted, provider data can be incomplete, and a BUY/SELL label does not predict what happens next. Review the reasons beside each metric.")
+        st.subheader("🗣️ StockGPT's plain-English take")
+        if overall["label"] == "BUY":
+            explainer = f"The available indicators lean bullish for {chosen.get('name', ticker)}, but this is only a rule-based setup. Check the latest news, liquidity, valuation and a planned risk limit before making any decision."
+        elif overall["label"] == "SELL":
+            explainer = f"The available indicators lean bearish for {chosen.get('name', ticker)} under these rules. That does not prove the price will fall next; check whether the move is news-driven and compare the setup with your own plan."
+        else:
+            explainer = f"The evidence for {chosen.get('name', ticker)} is mixed. StockGPT does not see a strong enough combined signal under its current rules, so this is a watch-and-research situation rather than a confident directional call."
+        st.info(explainer)
+        st.caption("This friendly explanation is generated from the app's rules; it is not a human analyst or a live conversational AI model.")
 
+        st.subheader("⚡ Intraday scenarios (1 min / 1h / 3h / 6h)")
+        intraday_df, intraday_error = intraday_scenarios(ticker)
+        st.caption(f"Intraday data fetched at {datetime.now().astimezone().strftime('%d %b %Y, %H:%M:%S %Z')}. Click Research stock / Run full analysis again to refresh; this is not a guaranteed live feed.")
+        if intraday_error:
+            st.info(intraday_error)
+        else:
+            st.dataframe(intraday_df, use_container_width=True, hide_index=True)
+            st.caption("Ranges are volatility-based scenarios from recent 1-minute candles. Midpoints are not calibrated predictions; short-term noise and news can dominate.")
         st.subheader("Price chart and moving averages")
         fig = go.Figure()
         fig.add_trace(go.Scatter(x=df.index, y=df["Close"], name="Close"))
         for col in ["SMA20", "SMA50", "SMA200"]:
             fig.add_trace(go.Scatter(x=df.index, y=df[col], name=col))
-        fig.update_layout(height=480, xaxis_title="Date", yaxis_title="₹", hovermode="x unified")
+        fig.update_layout(height=480, xaxis_title="Date", yaxis_title=f"Price ({currency})", hovermode="x unified")
         st.plotly_chart(fig, use_container_width=True)
 
-        tab1, tab2, tab3, tab4, tab5 = st.tabs(["Technical analysis", "Fundamentals", "Forecast scenarios", "News & web research", "Data & limitations"])
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["Technical analysis", "Fundamentals", "Forecast scenarios", "NSE idea board 🇮🇳", "News & web research", "Data & limitations"])
         with tab1:
             st.markdown("### Technical indicator signals")
             st.dataframe(technical_signals.drop(columns=["Score"]), use_container_width=True, hide_index=True)
@@ -587,6 +707,19 @@ if "candidates" in st.session_state:
                 st.write(f"Illustrative 80% range: ₹{row['Illustrative 80% range low (₹)']:,.2f} – ₹{row['Illustrative 80% range high (₹)']:,.2f}")
                 st.write(f"Illustrative 95% range: ₹{row['Illustrative 95% range low (₹)']:,.2f} – ₹{row['Illustrative 95% range high (₹)']:,.2f}")
         with tab4:
+            st.markdown("### 🇮🇳 NSE watchlist — rule-based ideas")
+            st.write("A small watchlist scan of selected NSE-listed companies. It is not the whole NSE universe and does not know your risk tolerance, entry price or trading costs.")
+            if st.button("Scan selected NSE shares", type="primary"):
+                with st.spinner("Checking recent daily candles for selected NSE listings…"):
+                    scan = quick_nse_watchlist()
+                if scan.empty:
+                    st.warning("No watchlist data returned. Try again later.")
+                else:
+                    st.dataframe(scan, use_container_width=True, hide_index=True)
+                    st.caption("These are technical setups, not personalized recommendations. Market-cap classification is not included because this quick scan does not reliably verify current market cap.")
+            st.markdown("### What the ranking means")
+            st.write("The scan ranks a curated list using price versus 20/50-session averages and 5-session momentum. It does not estimate a dependable time-to-profit or guarantee a winning stock.")
+        with tab5:
             st.markdown("### Latest provider news")
             if news:
                 for item in news:
@@ -603,12 +736,12 @@ if "candidates" in st.session_state:
                 st.write(item["Snippet"])
                 st.divider()
             st.caption("Search results are not exhaustive and can include stale, duplicate, promotional or inaccurate material. Open and verify the original source.")
-        with tab5:
+        with tab6:
             st.markdown("### Important limitations")
-            st.write("- This prototype does not inspect every website or every possible price-moving variable.")
-            st.write("- It does not have guaranteed real-time NSE/BSE data; the free sources can be delayed, rate-limited or unavailable.")
+            st.write("- Global ticker discovery depends on Yahoo Finance coverage and ticker conventions; this is not every listed share in every country.")
+            st.write("- It does not have a guaranteed real-time feed. Free sources may be delayed, rate-limited or unavailable; the displayed timestamp is fetch time, not proof of exchange-live data.")
             st.write("- It does not reliably parse every NSE/BSE corporate filing, concall transcript, legal proceeding, order book, FII/DII flow or global macroeconomic series.")
-            st.write("- Yahoo Finance/yfinance is an unofficial community tool for personal research; respect its terms and data-provider conditions.")
+            st.write("- Currency conversions use provider FX history when available and are approximate; fees, taxes, spreads and live exchange rates may differ. Yahoo Finance/yfinance is an unofficial community tool; respect provider terms.")
             st.write("- The news search is keyword-based, not a verified sentiment engine. Headlines need human verification.")
             st.write("- Missing fundamentals are shown as unavailable, not zero.")
             st.write("- Do not use the output alone to trade. Test any strategy on historical data with transaction costs, slippage and out-of-sample validation.")
